@@ -1,58 +1,66 @@
-import type { Log, User } from '../types';
-import { storage } from '../utils/storage';
+type LogLevel = 'info' | 'warning' | 'error';
+type LogAction = 'auth' | 'script' | 'user' | 'error_boundary' | 'security';
 
-export const logger = {
-  log(
-    level: Log['level'],
-    action: Log['action'],
+interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  action: LogAction;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+class Logger {
+  private logs: LogEntry[] = [];
+  private readonly MAX_LOGS = 1000;
+
+  private createLog(
+    level: LogLevel,
+    action: LogAction,
     message: string,
-    user: User,
-    scriptId?: string,
     details?: Record<string, unknown>
-  ): Log {
-    const newLog: Log = {
-      id: Date.now().toString(),
+  ): LogEntry {
+    const log: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
       action,
       message,
-      userId: user.id,
-      scriptId,
-      details,
+      details
     };
 
-    const logs = storage.getLogs();
-    storage.setLogs([...logs, newLog]);
-    return newLog;
-  },
+    this.logs.push(log);
+    if (this.logs.length > this.MAX_LOGS) {
+      this.logs.shift();
+    }
 
-  info(
-    action: Log['action'],
-    message: string,
-    user: User,
-    scriptId?: string,
-    details?: Record<string, unknown>
-  ): Log {
-    return this.log('info', action, message, user, scriptId, details);
-  },
+    // Log to console in development
+    if (import.meta.env.DEV) {
+      const consoleMethod = level === 'error' ? console.error :
+        level === 'warning' ? console.warn : console.log;
+      consoleMethod(`[${log.timestamp}] ${level.toUpperCase()}: ${message}`, details);
+    }
 
-  warning(
-    action: Log['action'],
-    message: string,
-    user: User,
-    scriptId?: string,
-    details?: Record<string, unknown>
-  ): Log {
-    return this.log('warning', action, message, user, scriptId, details);
-  },
+    return log;
+  }
 
-  error(
-    action: Log['action'],
-    message: string,
-    user: User,
-    scriptId?: string,
-    details?: Record<string, unknown>
-  ): Log {
-    return this.log('error', action, message, user, scriptId, details);
-  },
-};
+  info(action: LogAction, message: string, details?: Record<string, unknown>) {
+    return this.createLog('info', action, message, details);
+  }
+
+  warning(action: LogAction, message: string, details?: Record<string, unknown>) {
+    return this.createLog('warning', action, message, details);
+  }
+
+  error(action: LogAction, message: string, details?: Record<string, unknown>) {
+    return this.createLog('error', action, message, details);
+  }
+
+  getLogs(): LogEntry[] {
+    return [...this.logs];
+  }
+
+  clearLogs() {
+    this.logs = [];
+  }
+}
+
+export const logger = new Logger();
