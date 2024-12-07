@@ -27,7 +27,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const token = storage.getToken();
         if (token) {
           const decryptedToken = decrypt(token);
-          // Validate token and get user data
           const userData = await validateToken(decryptedToken);
           setUser(userData);
         }
@@ -44,11 +43,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (credentials: LoginCredentials) => {
     try {
-      // Validate input
       loginSchema.parse(credentials);
-
       setIsLoading(true);
-      // Implement your login logic here
+      
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -60,8 +57,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const { user: userData, token } = await response.json();
-      
-      // Encrypt token before storage
       storage.setToken(encrypt(token));
       setUser(userData);
       
@@ -81,11 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: RegisterData) => {
     try {
-      // Validate input
       registerSchema.parse(data);
-
       setIsLoading(true);
-      // Implement your registration logic here
+      
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -97,8 +90,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const { user: userData, token } = await response.json();
-      
-      // Encrypt token before storage
       storage.setToken(encrypt(token));
       setUser(userData);
       
