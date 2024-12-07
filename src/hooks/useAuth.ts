@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { authApi } from '../services/api/auth';
+import { authService } from '../services/auth/AuthService';
 import { storage } from '../utils/storage';
+import { logger } from '../services/logger';
 import type { LoginCredentials, RegisterData } from '../types/auth';
 
 export function useAuth() {
@@ -10,33 +11,64 @@ export function useAuth() {
 
   const { data: user, isLoading } = useQuery({
     queryKey: ['user'],
-    queryFn: authApi.getProfile,
+    queryFn: async () => {
+      try {
+        const currentUser = await authService.initialize();
+        if (currentUser) {
+          logger.info('auth', 'User authenticated from storage', { userId: currentUser.id });
+          return currentUser;
+        }
+        return null;
+      } catch (error) {
+        logger.error('auth', 'Failed to initialize auth', { error });
+        return null;
+      }
+    },
     retry: false,
-    enabled: !!storage.getToken(),
+    staleTime: Infinity
   });
 
   const loginMutation = useMutation({
-    mutationFn: (credentials: LoginCredentials) => authApi.login(credentials),
+    mutationFn: async (credentials: LoginCredentials) => {
+      const result = await authService.login(credentials);
+      return result;
+    },
     onSuccess: (data) => {
-      storage.setToken(data.token);
+      storage.setCurrentUser(data.user);
       queryClient.setQueryData(['user'], data.user);
       navigate('/');
     },
+    onError: (error) => {
+      logger.error('auth', 'Login failed', { error });
+      storage.clearCurrentUser();
+    }
   });
 
   const registerMutation = useMutation({
-    mutationFn: (userData: RegisterData) => authApi.register(userData),
+    mutationFn: async (userData: RegisterData) => {
+      const result = await authService.register(userData);
+      return result;
+    },
     onSuccess: (data) => {
-      storage.setToken(data.token);
+      storage.setCurrentUser(data.user);
       queryClient.setQueryData(['user'], data.user);
       navigate('/');
     },
+    onError: (error) => {
+      logger.error('auth', 'Registration failed', { error });
+      storage.clearCurrentUser();
+    }
   });
 
   const logout = () => {
-    storage.clearToken();
-    queryClient.clear();
-    navigate('/login');
+    try {
+      authService.logout();
+      storage.clearCurrentUser();
+      queryClient.clear();
+      navigate('/login');
+    } catch (error) {
+      logger.error('auth', 'Logout failed', { error });
+    }
   };
 
   return {

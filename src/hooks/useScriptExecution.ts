@@ -6,11 +6,16 @@ import type { Script } from '../types/script';
 export function useScriptExecution() {
   const [executingScripts, setExecutingScripts] = useState<Set<string>>(new Set());
 
-  const executeScript = useCallback(async (script: Script, userId: string) => {
+  const executeScript = useCallback(async (
+    script: Script, 
+    userId: string,
+    inputValues?: Record<string, string>
+  ) => {
     setExecutingScripts(prev => new Set(prev).add(script.id));
     
     try {
-      await scriptExecutor.executeScript(script, userId);
+      const result = await scriptExecutor.executeScript(script, userId, inputValues);
+      return result;
     } finally {
       setExecutingScripts(prev => {
         const next = new Set(prev);
@@ -20,7 +25,7 @@ export function useScriptExecution() {
     }
   }, []);
 
-  const stopScript = useCallback(async (scriptId: string) => {
+  const stopScript = useCallback(async (scriptId: string): Promise<boolean> => {
     const success = await scriptExecutor.stopScript(scriptId);
     if (success) {
       setExecutingScripts(prev => {

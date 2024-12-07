@@ -1,5 +1,4 @@
-type LogLevel = 'info' | 'warning' | 'error';
-type LogAction = 'auth' | 'script' | 'user' | 'error_boundary' | 'security';
+import type { LogLevel, LogAction } from '../types/log';
 
 interface LogEntry {
   timestamp: string;

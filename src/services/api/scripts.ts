@@ -1,5 +1,6 @@
 import { api } from './base';
 import type { Script, CreateScriptData, UpdateScriptData, ScriptExecutionResult } from '../../types/script';
+import type { User } from '../../types/auth';
 
 export const scriptsApi = {
   getAll: async () => {
@@ -27,14 +28,15 @@ export const scriptsApi = {
     return data;
   },
 
-  execute: async (id: string, script: Script): Promise<ScriptExecutionResult> => {
+  execute: async (id: string, script: Script, inputValues?: Record<string, string>): Promise<ScriptExecutionResult> => {
     const { data } = await api.post<ScriptExecutionResult>(`/scripts/${id}/execute`, {
       content: script.content,
-      type: script.type
+      type: script.type,
+      inputs: inputValues
     });
     return {
       ...data,
-      success: true, // Assuming success if the request completes
+      success: true,
       executionTime: Date.now() - new Date(script.lastRun || Date.now()).getTime()
     };
   },
@@ -46,6 +48,11 @@ export const scriptsApi = {
 
   getStatus: async (id: string): Promise<Script> => {
     const { data } = await api.get<Script>(`/scripts/${id}/status`);
+    return data;
+  },
+
+  getUser: async (userId: string): Promise<User> => {
+    const { data } = await api.get<User>(`/users/${userId}`);
     return data;
   }
 };

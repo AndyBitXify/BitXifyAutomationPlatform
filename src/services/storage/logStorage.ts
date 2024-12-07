@@ -1,5 +1,5 @@
-import { Log } from '../../types/log';
-import { User } from '../../types/auth';
+import type { Log } from '../../types/log';
+import type { User } from '../../types/auth';
 
 const LOGS_KEY = 'bitxify_logs';
 

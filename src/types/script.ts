@@ -11,6 +11,16 @@ export interface Script {
   lastRun?: string;
   createdAt: string;
   updatedAt: string;
+  inputs?: ScriptInput[];
+}
+
+export interface ScriptInput {
+  name: string;
+  label?: string;
+  type?: 'text' | 'password';
+  required?: boolean;
+  placeholder?: string;
+  description?: string;
 }
 
 export interface CreateScriptData {
@@ -19,6 +29,7 @@ export interface CreateScriptData {
   type: Script['type'];
   content: string;
   category: string;
+  inputs?: ScriptInput[];
 }
 
 export interface UpdateScriptData {
@@ -26,6 +37,7 @@ export interface UpdateScriptData {
   description?: string;
   content?: string;
   category?: string;
+  inputs?: ScriptInput[];
 }
 
 export interface ScriptExecutionResult {
@@ -33,10 +45,6 @@ export interface ScriptExecutionResult {
   output: string;
   error?: string;
   executionTime: number;
-}
-
-export interface Category {
-  id: string;
-  name: string;
-  icon: string;
+  requiresInput?: boolean;
+  inputs?: ScriptInput[];
 }

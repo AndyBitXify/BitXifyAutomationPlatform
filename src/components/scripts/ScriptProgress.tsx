@@ -1,15 +1,24 @@
 import { motion } from 'framer-motion';
-import { StopCircle, X } from 'lucide-react';
+import { StopCircle, X, AlertCircle } from 'lucide-react';
+import type { Script } from '../../types/script';
 
 interface ScriptProgressProps {
   progress: number;
   onStop: () => void;
   onClose?: () => void;
-  status: 'running' | 'success' | 'failed' | 'idle';
+  status: Script['status'];
   output?: string;
+  error?: string;
 }
 
-export function ScriptProgress({ progress, onStop, onClose, status, output }: ScriptProgressProps) {
+export function ScriptProgress({ 
+  progress, 
+  onStop, 
+  onClose, 
+  status, 
+  output,
+  error
+}: ScriptProgressProps) {
   const getStatusColor = () => {
     switch (status) {
       case 'running':
@@ -62,6 +71,18 @@ export function ScriptProgress({ progress, onStop, onClose, status, output }: Sc
           />
         </div>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <div className="flex items-start">
+            <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 mr-2" />
+            <div className="flex-1">
+              <h4 className="text-sm font-medium text-red-800 mb-1">Error</h4>
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {output && (
         <div className="bg-gray-900 rounded-lg p-4 font-mono text-sm max-h-60 overflow-y-auto">

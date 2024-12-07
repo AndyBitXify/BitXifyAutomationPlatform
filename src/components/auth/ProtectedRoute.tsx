@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Layout } from '../layout/Layout';
+import { logger } from '../../services/logger';
 
 export function ProtectedRoute() {
   const { user, isLoading } = useAuth();
@@ -14,6 +15,7 @@ export function ProtectedRoute() {
   }
 
   if (!user) {
+    logger.warning('auth', 'Unauthorized access attempt, redirecting to login');
     return <Navigate to="/login" replace />;
   }
 

@@ -1,50 +1,72 @@
 import { scriptStorage } from './storage/scriptStorage';
 import { logStorage } from './storage/logStorage';
 import { scriptsApi } from './api/scripts';
+import { authService } from './auth/AuthService';
+import { logger } from './logger';
 import type { Script } from '../types/script';
 
-// Track running scripts and their intervals
 const runningScripts = new Map<string, {
   intervalId: NodeJS.Timeout;
   abortController: AbortController;
 }>();
 
 export const scriptExecutor = {
-  async executeScript(script: Script, userId: string) {
+  async executeScript(
+    script: Script, 
+    userId: string, 
+    inputValues?: Record<string, string>
+  ) {
+    logger.info('script', 'Attempting to execute script', {
+      scriptId: script.id,
+      scriptName: script.name,
+      userId
+    });
+
     if (runningScripts.has(script.id)) {
+      logger.warning('script', 'Script already running', { scriptId: script.id });
       throw new Error('Script is already running');
+    }
+
+    // Validate authentication
+    if (!authService.validateAuth()) {
+      const error = new Error('User not authenticated');
+      logger.error('script', 'Script execution failed - User not authenticated', {
+        scriptId: script.id,
+        scriptName: script.name,
+        userId
+      });
+      throw error;
     }
 
     const abortController = new AbortController();
     let progress = 0;
     
     try {
-      // Update initial script status
+      // Initialize script with empty output
       const updatedScript = {
         ...script,
         status: 'running' as const,
         progress: 0,
         lastRun: new Date().toISOString(),
-        output: `[${new Date().toISOString()}] Starting script execution...\n`,
+        output: '', // Start with empty output
       };
       scriptStorage.updateScript(updatedScript);
 
-      // Log the script run action
-      logStorage.addLog({
-        id: crypto.randomUUID(),
-        timestamp: new Date().toISOString(),
-        userId,
-        action: 'script_run',
-        level: 'info',
-        message: `Started execution of script "${script.name}"`,
-        details: {
+      const user = authService.getCurrentUser();
+      if (!user) throw new Error('User not found');
+
+      logStorage.addActivityLog(
+        'script_run',
+        'info',
+        `Started execution of script "${script.name}"`,
+        user,
+        {
           scriptId: script.id,
           scriptName: script.name,
           scriptType: script.type,
-        },
-      });
+        }
+      );
 
-      // Start progress simulation
       const intervalId = setInterval(() => {
         if (progress < 90) {
           progress += Math.random() * 10;
@@ -56,42 +78,41 @@ export const scriptExecutor = {
         }
       }, 1000);
 
-      // Store running script info
       runningScripts.set(script.id, { intervalId, abortController });
 
-      // Execute the script
-      const result = await scriptsApi.execute(script.id, script);
+      logger.info('script', 'Executing script via API', {
+        scriptId: script.id,
+        hasInputs: !!inputValues
+      });
 
-      // Clear interval and update final status
+      const result = await scriptsApi.execute(script.id, script, inputValues);
+
       clearInterval(intervalId);
       runningScripts.delete(script.id);
 
-      // Update final script status
+      // Update script with final output (no concatenation)
       scriptStorage.updateScript({
         ...script,
         status: result.success ? 'success' : 'failed',
         progress: 100,
         lastRun: new Date().toISOString(),
-        output: `${script.output || ''}\n${result.output}`,
+        output: result.output, // Use only the final output
       });
 
-      // Log completion
-      logStorage.addLog({
-        id: crypto.randomUUID(),
-        timestamp: new Date().toISOString(),
-        userId,
-        action: 'script_run',
-        level: result.success ? 'info' : 'error',
-        message: `Script "${script.name}" ${result.success ? 'completed successfully' : 'failed'}`,
-        details: {
+      logStorage.addActivityLog(
+        'script_run',
+        result.success ? 'info' : 'error',
+        `Script "${script.name}" ${result.success ? 'completed successfully' : 'failed'}`,
+        user,
+        {
           scriptId: script.id,
           scriptName: script.name,
           executionTime: result.executionTime,
-        },
-      });
+        }
+      );
 
+      return result;
     } catch (error) {
-      // Clean up on error
       const runningScript = runningScripts.get(script.id);
       if (runningScript) {
         clearInterval(runningScript.intervalId);
@@ -99,14 +120,20 @@ export const scriptExecutor = {
       }
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      const finalOutput = `Error: ${errorMessage}\n${script.output || ''}`;
 
       scriptStorage.updateScript({
         ...script,
         status: 'failed',
         progress: 100,
         lastRun: new Date().toISOString(),
-        output: finalOutput,
+        output: `Error: ${errorMessage}`, // Only show error message
+      });
+
+      logger.error('script', 'Script execution failed', {
+        scriptId: script.id,
+        scriptName: script.name,
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined
       });
 
       throw error;
@@ -114,33 +141,53 @@ export const scriptExecutor = {
   },
 
   async stopScript(scriptId: string): Promise<boolean> {
+    logger.info('script', 'Attempting to stop script', { scriptId });
+
+    if (!authService.validateAuth()) {
+      const error = new Error('User not authenticated');
+      logger.error('script', 'Script stop failed - User not authenticated', { scriptId });
+      throw error;
+    }
+
     const runningScript = runningScripts.get(scriptId);
     if (runningScript) {
       try {
-        // Stop progress updates
         clearInterval(runningScript.intervalId);
-        
-        // Abort the script execution
         runningScript.abortController.abort();
-        
-        // Request the server to stop the script
         await scriptsApi.stop(scriptId);
         
-        // Update script status
         const script = scriptStorage.getScripts().find(s => s.id === scriptId);
         if (script) {
+          const user = authService.getCurrentUser();
+          if (!user) throw new Error('User not found');
+
           scriptStorage.updateScript({
             ...script,
             status: 'idle',
             progress: 0,
-            output: `${script.output || ''}\n[${new Date().toISOString()}] Script execution stopped by user.`,
+            output: 'Script execution stopped by user.',
           });
+
+          logStorage.addActivityLog(
+            'script_stop',
+            'info',
+            `Script "${script.name}" stopped by user`,
+            user,
+            {
+              scriptId: script.id,
+              scriptName: script.name
+            }
+          );
         }
 
         runningScripts.delete(scriptId);
         return true;
       } catch (error) {
-        console.error('Error stopping script:', error);
+        logger.error('script', 'Failed to stop script', {
+          scriptId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
         return false;
       }
     }

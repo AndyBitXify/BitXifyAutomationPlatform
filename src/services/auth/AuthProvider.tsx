@@ -1,8 +1,7 @@
 import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { authService } from './AuthService';
 import { storage } from '../../utils/storage';
-import { encrypt, decrypt } from '../../utils/crypto';
-import { loginSchema, registerSchema } from '../../utils/validation';
 import { logger } from '../logger';
 import type { User, LoginCredentials, RegisterData } from '../../types/auth';
 
@@ -17,22 +16,24 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    // Initialize from storage
+    const storedUser = storage.getCurrentUser();
+    return storedUser || authService.getCurrentUser();
+  });
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const token = storage.getToken();
-        if (token) {
-          const decryptedToken = decrypt(token);
-          const userData = await validateToken(decryptedToken);
+        const userData = await authService.initialize();
+        if (userData) {
           setUser(userData);
+          storage.setCurrentUser(userData);
         }
       } catch (error) {
         logger.error('auth', 'Failed to initialize auth', { error });
-        storage.clearToken();
       } finally {
         setIsLoading(false);
       }
@@ -43,28 +44,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (credentials: LoginCredentials) => {
     try {
-      loginSchema.parse(credentials);
       setIsLoading(true);
-      
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials)
-      });
-
-      if (!response.ok) {
-        throw new Error('Login failed');
-      }
-
-      const { user: userData, token } = await response.json();
-      storage.setToken(encrypt(token));
+      const { user: userData } = await authService.login(credentials);
       setUser(userData);
-      
-      logger.info('auth', 'User logged in successfully', {
-        userId: userData.id,
-        username: userData.username
-      });
-      
+      storage.setCurrentUser(userData);
       navigate('/');
     } catch (error) {
       logger.error('auth', 'Login failed', { error });
@@ -76,28 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: RegisterData) => {
     try {
-      registerSchema.parse(data);
       setIsLoading(true);
-      
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-
-      if (!response.ok) {
-        throw new Error('Registration failed');
-      }
-
-      const { user: userData, token } = await response.json();
-      storage.setToken(encrypt(token));
+      const { user: userData } = await authService.register(data);
       setUser(userData);
-      
-      logger.info('auth', 'User registered successfully', {
-        userId: userData.id,
-        username: userData.username
-      });
-      
+      storage.setCurrentUser(userData);
       navigate('/');
     } catch (error) {
       logger.error('auth', 'Registration failed', { error });
@@ -108,9 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    storage.clearToken();
+    authService.logout();
     setUser(null);
-    logger.info('auth', 'User logged out');
     navigate('/login');
   };
 
@@ -127,16 +91,4 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
-
-async function validateToken(token: string): Promise<User> {
-  const response = await fetch('/api/auth/validate', {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  
-  if (!response.ok) {
-    throw new Error('Invalid token');
-  }
-  
-  return response.json();
 }
