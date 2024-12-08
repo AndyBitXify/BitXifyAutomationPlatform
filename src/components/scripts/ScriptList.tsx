@@ -18,7 +18,7 @@ interface ScriptListProps {
 
 export function ScriptList({ scripts, onScriptDeleted }: ScriptListProps) {
   const { user } = useAuth();
-  const { executeScript, stopScript, isExecuting } = useScriptExecution();
+  const { executeScript, stopScript, isExecuting, executingScripts } = useScriptExecution();
   const [localScripts, setLocalScripts] = useState<Script[]>(scripts);
   const [showProgress, setShowProgress] = useState<Record<string, boolean>>({});
   const [scriptErrors, setScriptErrors] = useState<Record<string, string>>({});
@@ -36,7 +36,8 @@ export function ScriptList({ scripts, onScriptDeleted }: ScriptListProps) {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setLocalScripts(scriptStorage.getScripts());
+      const scripts = scriptStorage.getScripts();
+      setLocalScripts(scripts);
     }, 1000);
 
     return () => clearInterval(interval);
@@ -88,6 +89,19 @@ export function ScriptList({ scripts, onScriptDeleted }: ScriptListProps) {
       logger.error('script', 'Execution failed - User not authenticated', { scriptId: script.id });
       return;
     }
+
+    // Update script status immediately to show it's running
+    const updatedScript = {
+      ...script,
+      status: 'running' as const,
+      progress: 0,
+      output: '',
+      lastRun: new Date().toISOString()
+    };
+    scriptStorage.updateScript(updatedScript);
+    setLocalScripts(prevScripts => 
+      prevScripts.map(s => s.id === script.id ? updatedScript : s)
+    );
 
     setShowProgress({ ...showProgress, [script.id]: true });
     setScriptErrors({ ...scriptErrors, [script.id]: '' }); // Clear previous errors
@@ -236,6 +250,7 @@ export function ScriptList({ scripts, onScriptDeleted }: ScriptListProps) {
                       onClick={() => handleRun(script)}
                       className="text-blue-600 hover:text-blue-900 mr-4"
                       title="Run Script"
+                      disabled={executingScripts.has(script.id)}
                     >
                       <Play className="w-5 h-5" />
                     </button>
@@ -243,6 +258,7 @@ export function ScriptList({ scripts, onScriptDeleted }: ScriptListProps) {
                       onClick={() => handleDelete(script)}
                       className="text-red-600 hover:text-red-900"
                       title="Delete Script"
+                      disabled={executingScripts.has(script.id)}
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>

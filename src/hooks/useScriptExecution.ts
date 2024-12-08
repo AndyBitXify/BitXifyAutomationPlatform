@@ -8,13 +8,14 @@ export function useScriptExecution() {
 
   const executeScript = useCallback(async (
     script: Script, 
-    userId: string,
-    inputValues?: Record<string, string>
+    userId: string, 
+    inputValues?: Record<string, string>,
+    onProgress?: (progress: number, output: string) => void
   ) => {
     setExecutingScripts(prev => new Set(prev).add(script.id));
     
     try {
-      const result = await scriptExecutor.executeScript(script, userId, inputValues);
+      const result = await scriptExecutor.executeScript(script, userId, inputValues, onProgress);
       return result;
     } finally {
       setExecutingScripts(prev => {

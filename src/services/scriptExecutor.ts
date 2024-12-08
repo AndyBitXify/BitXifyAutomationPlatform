@@ -3,12 +3,39 @@ import { logStorage } from './storage/logStorage';
 import { scriptsApi } from './api/scripts';
 import { authService } from './auth/AuthService';
 import { logger } from './logger';
+import { io, Socket } from 'socket.io-client';
 import type { Script } from '../types/script';
 
 const runningScripts = new Map<string, {
-  intervalId: NodeJS.Timeout;
   abortController: AbortController;
+  socket?: Socket;
 }>();
+
+const socket = io('http://localhost:3000', {
+  transports: ['websocket', 'polling'],
+  reconnection: true,
+  reconnectionAttempts: 5
+});
+
+socket.on('connect', () => {
+  logger.info('script', 'Socket.IO connected');
+});
+
+socket.on('connect_error', (error) => {
+  logger.error('script', 'Socket.IO connection error', { error });
+});
+
+socket.on('scriptStatus', (update) => {
+  const script = scriptStorage.getScripts().find(s => s.id === update.scriptId);
+  if (script) {
+    scriptStorage.updateScript({
+      ...script,
+      status: update.status as Script['status'],
+      progress: update.progress,
+      output: update.output
+    });
+  }
+});
 
 export const scriptExecutor = {
   async executeScript(
@@ -39,7 +66,6 @@ export const scriptExecutor = {
     }
 
     const abortController = new AbortController();
-    let progress = 0;
     
     try {
       // Initialize script with empty output
@@ -47,8 +73,8 @@ export const scriptExecutor = {
         ...script,
         status: 'running' as const,
         progress: 0,
-        lastRun: new Date().toISOString(),
-        output: '', // Start with empty output
+        output: '',
+        lastRun: new Date().toISOString()
       };
       scriptStorage.updateScript(updatedScript);
 
@@ -67,18 +93,7 @@ export const scriptExecutor = {
         }
       );
 
-      const intervalId = setInterval(() => {
-        if (progress < 90) {
-          progress += Math.random() * 10;
-          scriptStorage.updateScript({
-            ...script,
-            status: 'running',
-            progress: Math.min(Math.round(progress), 90),
-          });
-        }
-      }, 1000);
-
-      runningScripts.set(script.id, { intervalId, abortController });
+      runningScripts.set(script.id, { abortController });
 
       logger.info('script', 'Executing script via API', {
         scriptId: script.id,
@@ -86,8 +101,7 @@ export const scriptExecutor = {
       });
 
       const result = await scriptsApi.execute(script.id, script, inputValues);
-
-      clearInterval(intervalId);
+      
       runningScripts.delete(script.id);
 
       // Update script with final output (no concatenation)
@@ -115,7 +129,6 @@ export const scriptExecutor = {
     } catch (error) {
       const runningScript = runningScripts.get(script.id);
       if (runningScript) {
-        clearInterval(runningScript.intervalId);
         runningScripts.delete(script.id);
       }
 
@@ -152,20 +165,23 @@ export const scriptExecutor = {
     const runningScript = runningScripts.get(scriptId);
     if (runningScript) {
       try {
-        clearInterval(runningScript.intervalId);
+        // Signal abort before clearing interval
         runningScript.abortController.abort();
+
+        // Wait for the API to stop the process
         await scriptsApi.stop(scriptId);
-        
+
         const script = scriptStorage.getScripts().find(s => s.id === scriptId);
         if (script) {
           const user = authService.getCurrentUser();
           if (!user) throw new Error('User not found');
 
+          // Update script status immediately
           scriptStorage.updateScript({
             ...script,
             status: 'idle',
             progress: 0,
-            output: 'Script execution stopped by user.',
+            output: script.output + '\nScript execution stopped by user.',
           });
 
           logStorage.addActivityLog(
@@ -188,6 +204,7 @@ export const scriptExecutor = {
           error: error instanceof Error ? error.message : 'Unknown error',
           stack: error instanceof Error ? error.stack : undefined
         });
+        runningScripts.delete(scriptId);
         return false;
       }
     }

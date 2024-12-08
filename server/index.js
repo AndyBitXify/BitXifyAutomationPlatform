@@ -31,6 +31,7 @@ app.use(express.json());
 
 // Store running scripts with cleanup handlers
 const runningScripts = new Map();
+const scriptOutputs = new Map();
 
 io.on('connection', (socket) => {
   logger.info('WebSocket client connected');
@@ -122,20 +123,30 @@ app.post('/api/scripts/:id/execute', async (req, res) => {
 
       psProcess.stdout.on('data', (data) => {
         const chunk = data.toString();
-        output += chunk;
-        progress += 10; // Simulated progress
-        broadcastStatus(id, 'running', progress, chunk);
+        const currentOutput = scriptOutputs.get(id) || '';
+        const updatedOutput = currentOutput + chunk;
+        scriptOutputs.set(id, updatedOutput);
+        
+        // Calculate progress based on output length
+        const progress = Math.min(Math.round((updatedOutput.length / 1000) * 100), 90);
+        
+        broadcastStatus(id, 'running', progress, updatedOutput);
         logger.info('PowerShell Output', { scriptId: id, output: chunk });
       });
 
       psProcess.stderr.on('data', (data) => {
         const chunk = data.toString();
-        broadcastStatus(id, 'failed', progress, chunk);
+        const currentOutput = scriptOutputs.get(id) || '';
+        scriptOutputs.set(id, currentOutput + chunk);
+        broadcastStatus(id, 'failed', 100, currentOutput + chunk);
         logger.error('PowerShell Error', { scriptId: id, error: chunk });
       });
 
       psProcess.on('close', (code) => {
         runningScripts.delete(id);
+        const finalOutput = scriptOutputs.get(id) || '';
+        scriptOutputs.delete(id);
+        
         try {
           fs.unlink(tempFile).catch((unlinkError) =>
             logger.error('Failed to delete temporary script file', { scriptId: id, tempFile, error: unlinkError })
@@ -145,15 +156,15 @@ app.post('/api/scripts/:id/execute', async (req, res) => {
         }
 
         if (code === 0) {
-          broadcastStatus(id, 'success', 100, output);
-          logger.info('Script execution completed', { scriptId: id, output });
+          broadcastStatus(id, 'success', 100, finalOutput);
+          logger.info('Script execution completed', { scriptId: id, output: finalOutput });
           res.status(200).json({
             success: true,
-            output,
+            output: finalOutput,
             executionTime: Date.now() - startTime,
           });
         } else {
-          broadcastStatus(id, 'failed', progress, 'Unknown error');
+          broadcastStatus(id, 'failed', 100, finalOutput || 'Unknown error');
           logger.error('Script execution failed', { scriptId: id, error: 'Unknown error' });
           res.status(500).json({
             success: false,
@@ -178,6 +189,41 @@ app.post('/api/scripts/:id/execute', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+app.post('/api/scripts/:id/stop', async (req, res) => {
+  const { id } = req.params;
+  const runningScript = runningScripts.get(id);
+
+  if (runningScript) {
+    try {
+      // Kill the process
+      if (runningScript.process) {
+        process.kill(-runningScript.process.pid);
+        runningScript.process.kill();
+      }
+      
+      // Clean up resources
+      runningScripts.delete(id);
+      
+      logger.info('Script stopped successfully', { scriptId: id });
+      res.status(200).json({ 
+        success: true,
+        message: 'Script stopped successfully'
+      });
+    } catch (error) {
+      logger.error('Failed to stop script', { scriptId: id, error });
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to stop script'
+      });
+    }
+  } else {
+    res.status(404).json({
+      success: false,
+      error: 'No running script found with the given ID'
     });
   }
 });

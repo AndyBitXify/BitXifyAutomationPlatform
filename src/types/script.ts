@@ -1,3 +1,5 @@
+export type ScriptStatus = 'idle' | 'running' | 'success' | 'failed';
+
 export interface Script {
   id: string;
   name: string;
@@ -5,7 +7,7 @@ export interface Script {
   type: 'powershell' | 'bash' | 'batch';
   content: string;
   category: string;
-  status: 'idle' | 'running' | 'success' | 'failed';
+  status: ScriptStatus;
   progress?: number;
   output?: string;
   lastRun?: string;
