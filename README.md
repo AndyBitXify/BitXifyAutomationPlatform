@@ -55,7 +55,7 @@ npm install
 
 3. Start development server:
 ```bash
-npm run electron:dev
+npm run dev
 ```
 
 ## Building from Source
@@ -66,83 +66,4 @@ npm run electron:dev
 - npm 9 or later
 - Git
 
-### Build Commands
-
-Build for current platform:
-```bash
-npm run electron:build
-```
-
-Build for specific platforms:
-```bash
-npm run electron:build:win    # Windows
-npm run electron:build:mac    # macOS
-npm run electron:build:linux  # Linux
-```
-
-Build for all platforms:
-```bash
-npm run electron:build:all
-```
-
-Builds will be available in the `dist-electron` directory.
-
-## Development
-
-### Project Structure
-
-```
-bitxify/
-├── electron/           # Electron main process files
-├── src/
-│   ├── components/    # React components
-│   ├── hooks/        # Custom React hooks
-│   ├── services/     # Business logic and API calls
-│   ├── types/        # TypeScript type definitions
-│   └── utils/        # Utility functions
-└── public/           # Static assets
-```
-
-### Technology Stack
-
-- **Frontend**: React, TypeScript, Tailwind CSS
-- **Desktop**: Electron
-- **State Management**: React Hooks
-- **UI Components**: Custom components with Framer Motion
-- **Icons**: Lucide React
-- **Build Tools**: Vite, Electron Builder
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
-## Security
-
-- Context isolation enabled
-- Proper permission handling
-- Secure IPC communication
-- Regular security updates
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-- Documentation: [docs.bitxify.com](https://docs.bitxify.com)
-- Issues: GitHub Issues
-- Email: support@bitxify.com
-
-## Acknowledgments
-
-- React Team
-- Electron Team
-- All contributors
-
 ---
-
-Made with ❤️ by the BitXify Team
